@@ -3,11 +3,19 @@ use bevy::{prelude::*, sprite::collide_aabb::collide, sprite::MaterialMesh2dBund
 // Defines the amount of time that should elapse between each physics step.
 const TIME_STEP: f32 = 1.0 / 60.0;
 
-const PLAYER_SIZE: Vec3 = Vec3::new(100.0, 25.0, 0.0);
 const GAP_BETWEEN_PLAYER_AND_FLOOR: f32 = 60.0;
+const GAP_BETWEEN_ENEMIES_AND_CEILING: f32 = 30.0;
+const GAP_BETWEEN_ENEMIES_AND_SIDES: f32 = 30.0;
+const GAP_BETWEEN_PLAYER_AND_ENEMIES: f32 = 300.0;
+const HORIONZTAL_GAP_BETWEEN_ENEMIES: f32 = 50.0;
+const VERTICAL_GAP_BETWEEN_ENEMIES: f32 = 50.0;
+
+const PLAYER_SIZE: Vec3 = Vec3::new(100.0, 25.0, 0.0);
 const PLAYER_SPEED: f32 = 400.0;
 // How close a player can get to a wall
 const PLAYER_PADDING: f32 = 10.0;
+
+const ENEMY_SIZE: Vec3 = Vec3::new(100.0, 25.0, 0.0);
 
 const PROJECTILE_SIZE: Vec3 = Vec3::new(25.0, 25.0, 0.0);
 const PROJECTILE_SPEED: f32 = 400.0;
@@ -15,16 +23,18 @@ const INITIAL_PLAYER_PROJECTILE_DIRECTION: Vec2 = Vec2::new(0.0, 1.0);
 
 const WALL_THICKNESS: f32 = 10.0;
 // x coordinates
-const LEFT_WALL: f32 = -450.;
-const RIGHT_WALL: f32 = 450.;
+const LEFT_WALL: f32 = -450.0;
+const RIGHT_WALL: f32 = 450.0;
 // y coordinates
-const BOTTOM_WALL: f32 = -300.;
-const TOP_WALL: f32 = 300.;
+const BOTTOM_WALL: f32 = -400.0;
+const TOP_WALL: f32 = 400.0;
 
 const BACKGROUND_COLOR: Color = Color::BLACK;
-const PLAYER_COLOR: Color = Color::GREEN;
 const WALL_COLOR: Color = Color::GREEN;
-const PROJECTILE_COLOR: Color = Color::GREEN;
+const PLAYER_COLOR: Color = Color::GREEN;
+const ENEMY_COLOR: Color = Color::RED;
+const PLAYER_PROJECTILE_COLOR: Color = Color::GREEN;
+const ENEMY_PROJECTILE_COLOR: Color = Color::RED;
 
 fn main() {
     App::new()
@@ -54,6 +64,9 @@ fn main() {
 
 #[derive(Component)]
 struct Player;
+
+#[derive(Component)]
+struct Enemy;
 
 #[derive(Component)]
 struct Collider;
@@ -158,6 +171,7 @@ fn setup(mut commands: Commands) {
             ..default()
         },
         Player,
+        Collider,
     ));
 
     // Walls
@@ -165,6 +179,58 @@ fn setup(mut commands: Commands) {
     commands.spawn(WallBundle::new(WallLocation::Right));
     commands.spawn(WallBundle::new(WallLocation::Bottom));
     commands.spawn(WallBundle::new(WallLocation::Top));
+
+    // Enemies
+    let total_width_of_enemies = (RIGHT_WALL - LEFT_WALL) - 2. * GAP_BETWEEN_ENEMIES_AND_SIDES;
+    let bottom_edge_of_enemies = player_y + GAP_BETWEEN_PLAYER_AND_ENEMIES;
+    let total_height_of_enemies =
+        TOP_WALL - bottom_edge_of_enemies - GAP_BETWEEN_ENEMIES_AND_CEILING;
+
+    assert!(total_width_of_enemies > 0.0);
+    assert!(total_height_of_enemies > 0.0);
+
+    let n_columns =
+        (total_width_of_enemies / (ENEMY_SIZE.x + HORIONZTAL_GAP_BETWEEN_ENEMIES)).floor() as usize;
+    let n_rows =
+        (total_height_of_enemies / (ENEMY_SIZE.y + VERTICAL_GAP_BETWEEN_ENEMIES)).floor() as usize;
+    let n_vertical_gaps = n_columns - 1;
+
+    let center_of_enemies = (LEFT_WALL + RIGHT_WALL) / 2.0;
+    let left_edge_of_enemies = center_of_enemies
+        // Space taken up by the enemies
+        - (n_columns as f32 / 2.0 * ENEMY_SIZE.x)
+        // Space taken up by the gaps between enemies
+        - n_vertical_gaps as f32 / 2.0 * HORIONZTAL_GAP_BETWEEN_ENEMIES;
+
+    let offset_x = left_edge_of_enemies + ENEMY_SIZE.x / 2.0;
+    let offset_y = bottom_edge_of_enemies + ENEMY_SIZE.y / 2.0;
+
+    for row in 0..n_rows {
+        for column in 0..n_columns {
+            let enemy_position = Vec2::new(
+                offset_x + column as f32 * (ENEMY_SIZE.x + HORIONZTAL_GAP_BETWEEN_ENEMIES),
+                offset_y + row as f32 * (ENEMY_SIZE.y + VERTICAL_GAP_BETWEEN_ENEMIES),
+            );
+
+            // enemy
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite {
+                        color: ENEMY_COLOR,
+                        ..default()
+                    },
+                    transform: Transform {
+                        translation: enemy_position.extend(0.0),
+                        scale: Vec3::new(ENEMY_SIZE.x, ENEMY_SIZE.y, 1.0),
+                        ..default()
+                    },
+                    ..default()
+                },
+                Enemy,
+                Collider,
+            ));
+        }
+    }
 }
 
 fn shoot_player_projectile(
@@ -181,7 +247,7 @@ fn shoot_player_projectile(
         commands.spawn((
             MaterialMesh2dBundle {
                 mesh: meshes.add(shape::Circle::default().into()).into(),
-                material: materials.add(ColorMaterial::from(PROJECTILE_COLOR)),
+                material: materials.add(ColorMaterial::from(PLAYER_PROJECTILE_COLOR)),
                 transform: Transform::from_translation(
                     Vec2::new(
                         player_position.translation.x,
@@ -234,11 +300,11 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
 fn check_for_collisions(
     mut commands: Commands,
     projectile_query: Query<(Entity, &Transform), With<Projectile>>,
-    collider_query: Query<&Transform, With<Collider>>,
+    collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<Collider>>,
     mut collision_events: EventWriter<CollisionEvent>,
 ) {
     // check collision with walls
-    for transform in &collider_query {
+    for (collider_entity, transform, maybe_enemy) in &collider_query {
         for (projectile_entity, projectile_transform) in &projectile_query {
             let collision = collide(
                 projectile_transform.translation,
@@ -249,8 +315,11 @@ fn check_for_collisions(
             if collision.is_some() {
                 // Sends a collision event so that other systems can react to the collision
                 collision_events.send_default();
-
                 commands.entity(projectile_entity).despawn();
+
+                if maybe_enemy.is_some() {
+                    commands.entity(collider_entity).despawn()
+                }
             }
         }
     }
