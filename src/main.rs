@@ -1,13 +1,17 @@
-use bevy::prelude::*;
+use bevy::{prelude::*, sprite::collide_aabb::collide, sprite::MaterialMesh2dBundle};
 
 // Defines the amount of time that should elapse between each physics step.
 const TIME_STEP: f32 = 1.0 / 60.0;
 
 const PLAYER_SIZE: Vec3 = Vec3::new(100.0, 25.0, 0.0);
 const GAP_BETWEEN_PLAYER_AND_FLOOR: f32 = 60.0;
-const PLAYER_SPEED: f32 = 100.0;
+const PLAYER_SPEED: f32 = 400.0;
 // How close a player can get to a wall
 const PLAYER_PADDING: f32 = 10.0;
+
+const PROJECTILE_SIZE: Vec3 = Vec3::new(25.0, 25.0, 0.0);
+const PROJECTILE_SPEED: f32 = 400.0;
+const INITIAL_PLAYER_PROJECTILE_DIRECTION: Vec2 = Vec2::new(0.0, 1.0);
 
 const WALL_THICKNESS: f32 = 10.0;
 // x coordinates
@@ -20,13 +24,30 @@ const TOP_WALL: f32 = 300.;
 const BACKGROUND_COLOR: Color = Color::BLACK;
 const PLAYER_COLOR: Color = Color::GREEN;
 const WALL_COLOR: Color = Color::GREEN;
+const PROJECTILE_COLOR: Color = Color::GREEN;
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_startup_system(setup)
-        .add_system(move_player)
+        .add_event::<CollisionEvent>()
+        .add_system(
+            shoot_player_projectile
+                .before(check_for_collisions)
+                .before(apply_velocity),
+        )
+        .add_systems(
+            (
+                check_for_collisions,
+                apply_velocity.before(check_for_collisions),
+                move_player
+                    .before(check_for_collisions)
+                    .after(apply_velocity),
+            )
+                .in_schedule(CoreSchedule::FixedUpdate),
+        )
+        .insert_resource(FixedTime::new_from_secs(TIME_STEP))
         .add_system(bevy::window::close_on_esc)
         .run();
 }
@@ -35,10 +56,16 @@ fn main() {
 struct Player;
 
 #[derive(Component)]
-struct Velocity;
+struct Collider;
 
 #[derive(Component)]
-struct Collider;
+struct Projectile;
+
+#[derive(Component, Deref, DerefMut)]
+struct Velocity(Vec2);
+
+#[derive(Default)]
+struct CollisionEvent;
 
 enum WallLocation {
     Left,
@@ -140,6 +167,37 @@ fn setup(mut commands: Commands) {
     commands.spawn(WallBundle::new(WallLocation::Top));
 }
 
+fn shoot_player_projectile(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    query: Query<&Transform, With<Player>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    keyboard_input: Res<Input<KeyCode>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        let player_position = query.single();
+
+        // Spawn projectile
+        commands.spawn((
+            MaterialMesh2dBundle {
+                mesh: meshes.add(shape::Circle::default().into()).into(),
+                material: materials.add(ColorMaterial::from(PROJECTILE_COLOR)),
+                transform: Transform::from_translation(
+                    Vec2::new(
+                        player_position.translation.x,
+                        player_position.translation.y + PLAYER_SIZE.y,
+                    )
+                    .extend(0.),
+                )
+                .with_scale(PROJECTILE_SIZE),
+                ..default()
+            },
+            Projectile,
+            Velocity(INITIAL_PLAYER_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
+        ));
+    }
+}
+
 fn move_player(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<&mut Transform, With<Player>>,
@@ -163,4 +221,37 @@ fn move_player(
     let right_bound = RIGHT_WALL - WALL_THICKNESS / 2.0 - PLAYER_SIZE.x / 2.0 - PLAYER_PADDING;
 
     player_transform.translation.x = new_player_position.clamp(left_bound, right_bound);
+}
+
+fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
+    info!("{:?}", query);
+    for (mut transform, velocity) in &mut query {
+        transform.translation.x += velocity.x * TIME_STEP;
+        transform.translation.y += velocity.y * TIME_STEP;
+    }
+}
+
+fn check_for_collisions(
+    mut commands: Commands,
+    projectile_query: Query<(Entity, &Transform), With<Projectile>>,
+    collider_query: Query<&Transform, With<Collider>>,
+    mut collision_events: EventWriter<CollisionEvent>,
+) {
+    // check collision with walls
+    for transform in &collider_query {
+        for (projectile_entity, projectile_transform) in &projectile_query {
+            let collision = collide(
+                projectile_transform.translation,
+                projectile_transform.scale.truncate(),
+                transform.translation,
+                transform.scale.truncate(),
+            );
+            if collision.is_some() {
+                // Sends a collision event so that other systems can react to the collision
+                collision_events.send_default();
+
+                commands.entity(projectile_entity).despawn();
+            }
+        }
+    }
 }
