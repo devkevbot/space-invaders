@@ -2678,7 +2678,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "space-invaders"
+name = "space_invaders"
 version = "0.1.0"
 dependencies = [
  "bevy",
