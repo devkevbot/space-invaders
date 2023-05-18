@@ -43,6 +43,11 @@ const PLAYER_COLOR: Color = Color::GREEN;
 const ENEMY_COLOR: Color = Color::RED;
 const PLAYER_PROJECTILE_COLOR: Color = Color::GREEN;
 const ENEMY_PROJECTILE_COLOR: Color = Color::RED;
+const TEXT_COLOR: Color = Color::GREEN;
+const SCORE_COLOR: Color = Color::GREEN;
+
+const SCOREBOARD_FONT_SIZE: f32 = 40.0;
+const SCOREBOARD_TEXT_PADDING: Val = Val::Px(30.0);
 
 fn main() {
     App::new()
@@ -50,6 +55,7 @@ fn main() {
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_startup_system(setup)
         .add_event::<CollisionEvent>()
+        .insert_resource(Scoreboard { score: 0 })
         .add_system(
             shoot_player_projectile
                 .before(check_for_collisions)
@@ -59,12 +65,14 @@ fn main() {
             2.0,
             TimerMode::Repeating,
         )))
-        .add_system(move_enemies)
         .add_system(shoot_enemy_projectile)
         .add_systems(
             (
                 check_for_collisions,
                 apply_velocity.before(check_for_collisions),
+                move_enemies
+                    .before(check_for_collisions)
+                    .after(apply_velocity),
                 move_player
                     .before(check_for_collisions)
                     .after(apply_velocity),
@@ -72,6 +80,7 @@ fn main() {
                 .in_schedule(CoreSchedule::FixedUpdate),
         )
         .insert_resource(FixedTime::new_from_secs(TIME_STEP))
+        .add_system(update_scoreboard)
         .add_system(bevy::window::close_on_esc)
         .run();
 }
@@ -99,6 +108,11 @@ struct CollisionEvent;
 
 #[derive(Resource)]
 struct EnemyShootTimer(Timer);
+
+#[derive(Resource)]
+struct Scoreboard {
+    score: usize,
+}
 
 enum WallLocation {
     Left,
@@ -171,7 +185,7 @@ impl WallBundle {
     }
 }
 
-fn setup(mut commands: Commands) {
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2dBundle::default());
 
     let player_y = BOTTOM_WALL + GAP_BETWEEN_PLAYER_AND_FLOOR;
@@ -200,6 +214,34 @@ fn setup(mut commands: Commands) {
     commands.spawn(WallBundle::new(WallLocation::Right));
     commands.spawn(WallBundle::new(WallLocation::Bottom));
     commands.spawn(WallBundle::new(WallLocation::Top));
+
+    // Scoreboard
+    commands.spawn(
+        TextBundle::from_sections([
+            TextSection::new(
+                "Score: ",
+                TextStyle {
+                    font_size: SCOREBOARD_FONT_SIZE,
+                    color: TEXT_COLOR,
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                },
+            ),
+            TextSection::from_style(TextStyle {
+                font_size: SCOREBOARD_FONT_SIZE,
+                color: SCORE_COLOR,
+                font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+            }),
+        ])
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            position: UiRect {
+                top: SCOREBOARD_TEXT_PADDING,
+                left: SCOREBOARD_TEXT_PADDING,
+                ..default()
+            },
+            ..default()
+        }),
+    );
 
     // Enemies
     let total_width_of_enemies = (RIGHT_WALL - LEFT_WALL) - 2. * GAP_BETWEEN_ENEMIES_AND_SIDES;
@@ -395,12 +437,18 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
     }
 }
 
+fn update_scoreboard(scoreboard: Res<Scoreboard>, mut query: Query<&mut Text>) {
+    let mut text = query.single_mut();
+    text.sections[1].value = scoreboard.score.to_string();
+}
+
 fn check_for_collisions(
     mut commands: Commands,
     projectile_query: Query<(Entity, &Transform), With<Projectile>>,
     mut lives_query: Query<(Entity, &mut Lives), With<Player>>,
     collider_query: Query<(Entity, &Transform, Option<&Enemy>, Option<&Player>), With<Collider>>,
     mut collision_events: EventWriter<CollisionEvent>,
+    mut scoreboard: ResMut<Scoreboard>,
 ) {
     for (collider_entity, transform, maybe_enemy, maybe_player) in &collider_query {
         for (projectile_entity, projectile_transform) in &projectile_query {
@@ -428,6 +476,7 @@ fn check_for_collisions(
                 }
 
                 if maybe_enemy.is_some() {
+                    scoreboard.score += 1;
                     commands.entity(collider_entity).despawn()
                 }
             }
