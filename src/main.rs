@@ -22,7 +22,7 @@ const N_ENEMY_COLS: usize = 6;
 const PROJECTILE_SIZE: Vec3 = Vec3::new(25.0, 25.0, 0.0);
 const PROJECTILE_SPEED: f32 = 400.0;
 const INITIAL_PLAYER_PROJECTILE_DIRECTION: Vec2 = Vec2::new(0.0, 1.0);
-// const INITIAL_ENEMY_PROJECTILE_DIRECTION: Vec2 = Vec2::new(0.0, -1.0);
+const INITIAL_ENEMY_PROJECTILE_DIRECTION: Vec2 = Vec2::new(0.0, -1.0);
 
 const WALL_THICKNESS: f32 = 10.0;
 // x coordinates
@@ -37,7 +37,7 @@ const WALL_COLOR: Color = Color::GREEN;
 const PLAYER_COLOR: Color = Color::GREEN;
 const ENEMY_COLOR: Color = Color::RED;
 const PLAYER_PROJECTILE_COLOR: Color = Color::GREEN;
-// const ENEMY_PROJECTILE_COLOR: Color = Color::RED;
+const ENEMY_PROJECTILE_COLOR: Color = Color::RED;
 
 fn main() {
     App::new()
@@ -54,7 +54,7 @@ fn main() {
             2.0,
             TimerMode::Repeating,
         )))
-        // .add_system(shoot_enemy_projectile)
+        .add_system(shoot_enemy_projectile)
         .add_systems(
             (
                 check_for_collisions,
@@ -296,38 +296,60 @@ fn move_player(
     player_transform.translation.x = new_player_position.clamp(left_bound, right_bound);
 }
 
-// TODO: find a way to make enemies closest to the player shoot
-// fn shoot_enemy_projectile(
-//     time: Res<Time>,
-//     mut timer: ResMut<EnemyShootTimer>,
-//     mut commands: Commands,
-//     mut meshes: ResMut<Assets<Mesh>>,
-//     query: Query<(&Transform, &Enemy), With<Enemy>>,
-//     mut materials: ResMut<Assets<ColorMaterial>>,
-// ) {
-//     if timer.0.tick(time.delta()).just_finished() {
-//         for (transform, enemy) in query.iter() {
-//             // Spawn projectile
-//             commands.spawn((
-//                 MaterialMesh2dBundle {
-//                     mesh: meshes.add(shape::Circle::default().into()).into(),
-//                     material: materials.add(ColorMaterial::from(ENEMY_PROJECTILE_COLOR)),
-//                     transform: Transform::from_translation(
-//                         Vec2::new(
-//                             transform.translation.x,
-//                             transform.translation.y - ENEMY_SIZE.y,
-//                         )
-//                         .extend(0.),
-//                     )
-//                     .with_scale(PROJECTILE_SIZE),
-//                     ..default()
-//                 },
-//                 Projectile,
-//                 Velocity(INITIAL_ENEMY_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
-//             ));
-//         }
-//     }
-// }
+fn shoot_enemy_projectile(
+    time: Res<Time>,
+    mut timer: ResMut<EnemyShootTimer>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    query: Query<(Entity, &Transform), With<Enemy>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    if timer.0.tick(time.delta()).just_finished() {
+        for (entity_a, transform_a) in query.iter() {
+            let mut can_shoot = true;
+
+            for (entity_b, transform_b) in query.iter() {
+                if entity_a == entity_b {
+                    continue;
+                }
+
+                // We don't need to check if the entities are not below one another
+                if transform_b.translation.x != transform_a.translation.x {
+                    continue;
+                }
+
+                // An Enemy can't shoot if another Enemy is below it
+                if transform_b.translation.y < transform_a.translation.y {
+                    can_shoot = false;
+                    break;
+                }
+            }
+
+            if !can_shoot {
+                continue;
+            }
+
+            // Spawn projectile
+            commands.spawn((
+                MaterialMesh2dBundle {
+                    mesh: meshes.add(shape::Circle::default().into()).into(),
+                    material: materials.add(ColorMaterial::from(ENEMY_PROJECTILE_COLOR)),
+                    transform: Transform::from_translation(
+                        Vec2::new(
+                            transform_a.translation.x,
+                            transform_a.translation.y - ENEMY_SIZE.y,
+                        )
+                        .extend(0.),
+                    )
+                    .with_scale(PROJECTILE_SIZE),
+                    ..default()
+                },
+                Projectile,
+                Velocity(INITIAL_ENEMY_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
+            ));
+        }
+    }
+}
 
 fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut transform, velocity) in &mut query {
