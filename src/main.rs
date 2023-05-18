@@ -10,6 +10,7 @@ const GAP_BETWEEN_PLAYER_AND_ENEMIES: f32 = 450.0;
 const HORIONZTAL_GAP_BETWEEN_ENEMIES: f32 = 50.0;
 const VERTICAL_GAP_BETWEEN_ENEMIES: f32 = 25.0;
 
+const INITIAL_PLAYER_LIVES: usize = 3;
 const PLAYER_SIZE: Vec3 = Vec3::new(100.0, 25.0, 0.0);
 const PLAYER_SPEED: f32 = 400.0;
 // How close a player can get to a wall
@@ -77,6 +78,9 @@ fn main() {
 
 #[derive(Component)]
 struct Player;
+
+#[derive(Component)]
+struct Lives(usize);
 
 #[derive(Component)]
 struct Enemy;
@@ -188,6 +192,7 @@ fn setup(mut commands: Commands) {
         },
         Player,
         Collider,
+        Lives(INITIAL_PLAYER_LIVES),
     ));
 
     // Walls
@@ -393,11 +398,11 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>) {
 fn check_for_collisions(
     mut commands: Commands,
     projectile_query: Query<(Entity, &Transform), With<Projectile>>,
-    collider_query: Query<(Entity, &Transform, Option<&Enemy>), With<Collider>>,
+    mut lives_query: Query<(Entity, &mut Lives), With<Player>>,
+    collider_query: Query<(Entity, &Transform, Option<&Enemy>, Option<&Player>), With<Collider>>,
     mut collision_events: EventWriter<CollisionEvent>,
 ) {
-    // check collision with walls
-    for (collider_entity, transform, maybe_enemy) in &collider_query {
+    for (collider_entity, transform, maybe_enemy, maybe_player) in &collider_query {
         for (projectile_entity, projectile_transform) in &projectile_query {
             let collision = collide(
                 projectile_transform.translation,
@@ -411,6 +416,16 @@ fn check_for_collisions(
                 collision_events.send_default();
 
                 commands.entity(projectile_entity).despawn();
+
+                if maybe_player.is_some() {
+                    let (player_entity, mut lives) = lives_query.single_mut();
+                    // Game over
+                    if lives.0 == 1 {
+                        // commands.entity(player_entity).despawn()
+                    } else {
+                        lives.0 -= 1
+                    }
+                }
 
                 if maybe_enemy.is_some() {
                     commands.entity(collider_entity).despawn()
