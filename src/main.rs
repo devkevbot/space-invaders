@@ -49,7 +49,8 @@ const TEXT_COLOR: Color = Color::GREEN;
 const SCORE_COLOR: Color = Color::GREEN;
 
 const SCOREBOARD_FONT_SIZE: f32 = 40.0;
-const SCOREBOARD_TEXT_PADDING: Val = Val::Px(30.0);
+const SCOREBOARD_TEXT_PADDING_X: Val = Val::Px(250.0);
+const SCOREBOARD_TEXT_PADDING_Y: Val = Val::Px(250.0);
 
 fn main() {
     App::new()
@@ -71,6 +72,9 @@ fn main() {
         .add_startup_system(setup)
         .add_event::<CollisionEvent>()
         .insert_resource(Scoreboard { score: 0 })
+        .insert_resource(LivesTracker {
+            lives_left: INITIAL_PLAYER_LIVES,
+        })
         .add_system(
             shoot_player_projectile
                 .before(check_for_collisions)
@@ -96,6 +100,7 @@ fn main() {
         )
         .insert_resource(FixedTime::new_from_secs(TIME_STEP))
         .add_system(update_scoreboard)
+        .add_system(update_lives_tracker)
         .add_system(bevy::window::close_on_esc)
         .run();
 }
@@ -127,6 +132,11 @@ struct EnemyShootTimer(Timer);
 #[derive(Resource)]
 struct Scoreboard {
     score: usize,
+}
+
+#[derive(Resource)]
+struct LivesTracker {
+    lives_left: usize,
 }
 
 enum WallLocation {
@@ -230,7 +240,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(WallBundle::new(WallLocation::Bottom));
     commands.spawn(WallBundle::new(WallLocation::Top));
 
-    // Scoreboard
+    // Scoreboard and lives tracker
     commands.spawn(
         TextBundle::from_sections([
             TextSection::new(
@@ -246,12 +256,25 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
                 color: SCORE_COLOR,
                 font: asset_server.load("fonts/FiraMono-Medium.ttf"),
             }),
+            TextSection::new(
+                "\nLives: ",
+                TextStyle {
+                    font_size: SCOREBOARD_FONT_SIZE,
+                    color: TEXT_COLOR,
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                },
+            ),
+            TextSection::from_style(TextStyle {
+                font_size: SCOREBOARD_FONT_SIZE,
+                color: SCORE_COLOR,
+                font: asset_server.load("fonts/FiraMono-Medium.ttf"),
+            }),
         ])
         .with_style(Style {
             position_type: PositionType::Absolute,
             position: UiRect {
-                top: SCOREBOARD_TEXT_PADDING,
-                left: SCOREBOARD_TEXT_PADDING,
+                bottom: SCOREBOARD_TEXT_PADDING_Y,
+                left: SCOREBOARD_TEXT_PADDING_X,
                 ..default()
             },
             ..default()
@@ -459,6 +482,11 @@ fn update_scoreboard(scoreboard: Res<Scoreboard>, mut query: Query<&mut Text>) {
     text.sections[1].value = scoreboard.score.to_string();
 }
 
+fn update_lives_tracker(lives_tracker: Res<LivesTracker>, mut query: Query<&mut Text>) {
+    let mut text = query.single_mut();
+    text.sections[3].value = lives_tracker.lives_left.to_string();
+}
+
 fn check_for_collisions(
     mut commands: Commands,
     projectile_query: Query<(Entity, &Transform), With<Projectile>>,
@@ -466,6 +494,7 @@ fn check_for_collisions(
     collider_query: Query<(Entity, &Transform, Option<&Enemy>, Option<&Player>), With<Collider>>,
     mut collision_events: EventWriter<CollisionEvent>,
     mut scoreboard: ResMut<Scoreboard>,
+    mut lives_tracker: ResMut<LivesTracker>,
 ) {
     for (collider_entity, transform, maybe_enemy, maybe_player) in &collider_query {
         for (projectile_entity, projectile_transform) in &projectile_query {
@@ -484,11 +513,11 @@ fn check_for_collisions(
 
                 if maybe_player.is_some() {
                     let (player_entity, mut lives) = lives_query.single_mut();
+                    lives.0 -= 1;
+                    lives_tracker.lives_left = lives.0;
                     // Game over
-                    if lives.0 == 1 {
+                    if lives.0 == 0 {
                         commands.entity(player_entity).despawn()
-                    } else {
-                        lives.0 -= 1
                     }
                 }
 
