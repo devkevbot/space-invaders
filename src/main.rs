@@ -1,4 +1,6 @@
-use bevy::{prelude::*, sprite::collide_aabb::collide, sprite::MaterialMesh2dBundle};
+use bevy::{
+    prelude::*, sprite::collide_aabb::collide, sprite::MaterialMesh2dBundle, window::PresentMode,
+};
 
 // Defines the amount of time that should elapse between each physics step.
 const TIME_STEP: f32 = 1.0 / 60.0;
@@ -51,7 +53,20 @@ const SCOREBOARD_TEXT_PADDING: Val = Val::Px(30.0);
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "Totally not Space Invaders".into(),
+                resolution: (1920.0, 1080.0).into(),
+                present_mode: PresentMode::AutoVsync,
+                // Tells wasm to resize the window according to the available canvas
+                fit_canvas_to_parent: true,
+                position: WindowPosition::At(IVec2 { x: 0, y: 0 }),
+                // Tells wasm not to override default event handling, like F5, Ctrl+R etc.
+                prevent_default_event_handling: false,
+                ..default()
+            }),
+            ..default()
+        }))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .add_startup_system(setup)
         .add_event::<CollisionEvent>()
