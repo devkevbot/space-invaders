@@ -16,6 +16,10 @@ const PLAYER_SPEED: f32 = 400.0;
 const PLAYER_PADDING: f32 = 10.0;
 
 const ENEMY_SIZE: Vec3 = Vec3::new(50.0, 25.0, 0.0);
+const ENEMY_SPEED: f32 = 50.0;
+// How close an enemy can get to a wall
+const ENEMY_PADDING: f32 = 10.0;
+const INITIAL_ENEMY_DIRECTION: Vec2 = Vec2::new(-1.0, 0.0);
 const N_ENEMY_ROWS: usize = 4;
 const N_ENEMY_COLS: usize = 6;
 
@@ -54,6 +58,7 @@ fn main() {
             2.0,
             TimerMode::Repeating,
         )))
+        .add_system(move_enemies)
         .add_system(shoot_enemy_projectile)
         .add_systems(
             (
@@ -235,6 +240,7 @@ fn setup(mut commands: Commands) {
                 },
                 Enemy,
                 Collider,
+                Velocity(INITIAL_ENEMY_DIRECTION.normalize() * ENEMY_SPEED),
             ));
         }
     }
@@ -348,6 +354,32 @@ fn shoot_enemy_projectile(
                 Velocity(INITIAL_ENEMY_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
             ));
         }
+    }
+}
+
+fn move_enemies(
+    transform_query: Query<&Transform, With<Enemy>>,
+    mut velocity_query: Query<&mut Velocity, With<Enemy>>,
+) {
+    // If any Enemy hits the left or right bounds, we need to every Enemy in the opposite direction
+
+    let mut reverse_direction = false;
+
+    let left_bound = LEFT_WALL + WALL_THICKNESS / 2.0 + ENEMY_SIZE.x / 2.0 + ENEMY_PADDING;
+    let right_bound = RIGHT_WALL - WALL_THICKNESS / 2.0 - ENEMY_SIZE.x / 2.0 - ENEMY_PADDING;
+
+    for transform in transform_query.iter() {
+        if transform.translation.x <= left_bound || transform.translation.x >= right_bound {
+            reverse_direction = true
+        }
+    }
+
+    if !reverse_direction {
+        return;
+    }
+
+    for mut velocity in velocity_query.iter_mut() {
+        velocity.x *= -1.0
     }
 }
 
