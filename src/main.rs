@@ -316,26 +316,26 @@ fn shoot_player_projectile(
     keyboard_input: Res<Input<KeyCode>>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
-        let player_position = query.single();
-
-        // Spawn projectile
-        commands.spawn((
-            MaterialMesh2dBundle {
-                mesh: meshes.add(shape::Circle::default().into()).into(),
-                material: materials.add(ColorMaterial::from(PLAYER_PROJECTILE_COLOR)),
-                transform: Transform::from_translation(
-                    Vec2::new(
-                        player_position.translation.x,
-                        player_position.translation.y + PLAYER_SIZE.y,
+        if let Ok(player_position) = query.get_single() {
+            // Spawn projectile
+            commands.spawn((
+                MaterialMesh2dBundle {
+                    mesh: meshes.add(shape::Circle::default().into()).into(),
+                    material: materials.add(ColorMaterial::from(PLAYER_PROJECTILE_COLOR)),
+                    transform: Transform::from_translation(
+                        Vec2::new(
+                            player_position.translation.x,
+                            player_position.translation.y + PLAYER_SIZE.y,
+                        )
+                        .extend(0.),
                     )
-                    .extend(0.),
-                )
-                .with_scale(PROJECTILE_SIZE),
-                ..default()
-            },
-            Projectile,
-            Velocity(INITIAL_PLAYER_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
-        ));
+                    .with_scale(PROJECTILE_SIZE),
+                    ..default()
+                },
+                Projectile,
+                Velocity(INITIAL_PLAYER_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
+            ));
+        }
     }
 }
 
@@ -343,25 +343,27 @@ fn move_player(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<&mut Transform, With<Player>>,
 ) {
-    let mut player_transform = query.single_mut();
-    let mut direction = 0.0;
+    if let Ok(mut player_transform) = query.get_single_mut() {
+        let mut direction = 0.0;
 
-    if keyboard_input.pressed(KeyCode::A) {
-        direction -= 1.0;
+        if keyboard_input.pressed(KeyCode::A) {
+            direction -= 1.0;
+        }
+
+        if keyboard_input.pressed(KeyCode::D) {
+            direction += 1.0;
+        }
+
+        let new_player_position =
+            player_transform.translation.x + direction * PLAYER_SPEED * TIME_STEP;
+
+        // Update the player position,
+        // making sure it doesn't cause the player to leave the arena
+        let left_bound = LEFT_WALL + WALL_THICKNESS / 2.0 + PLAYER_SIZE.x / 2.0 + PLAYER_PADDING;
+        let right_bound = RIGHT_WALL - WALL_THICKNESS / 2.0 - PLAYER_SIZE.x / 2.0 - PLAYER_PADDING;
+
+        player_transform.translation.x = new_player_position.clamp(left_bound, right_bound);
     }
-
-    if keyboard_input.pressed(KeyCode::D) {
-        direction += 1.0;
-    }
-
-    let new_player_position = player_transform.translation.x + direction * PLAYER_SPEED * TIME_STEP;
-
-    // Update the player position,
-    // making sure it doesn't cause the player to leave the arena
-    let left_bound = LEFT_WALL + WALL_THICKNESS / 2.0 + PLAYER_SIZE.x / 2.0 + PLAYER_PADDING;
-    let right_bound = RIGHT_WALL - WALL_THICKNESS / 2.0 - PLAYER_SIZE.x / 2.0 - PLAYER_PADDING;
-
-    player_transform.translation.x = new_player_position.clamp(left_bound, right_bound);
 }
 
 fn shoot_enemy_projectile(
@@ -484,7 +486,7 @@ fn check_for_collisions(
                     let (player_entity, mut lives) = lives_query.single_mut();
                     // Game over
                     if lives.0 == 1 {
-                        // commands.entity(player_entity).despawn()
+                        commands.entity(player_entity).despawn()
                     } else {
                         lives.0 -= 1
                     }
