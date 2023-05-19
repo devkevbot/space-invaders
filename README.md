@@ -8,14 +8,14 @@ My attempt to re-create Space Invaders using Rust
 - [x] Spawn location
 - [x] Movement
 - [x] Shooting projectile
-- [ ] Lives system
+- [x] Lives system
 - [x] Collision
 
 ### Enemies
 
 - [x] Spawn location
 - [x] Horizontal Movement 
-- [ ] Vertical Movement
+- [ ] ~~Vertical Movement~~
 - [x] Shooting projectile
 - [x] Collision
 
