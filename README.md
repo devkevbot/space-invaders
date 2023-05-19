@@ -25,9 +25,9 @@ My attempt to re-create Space Invaders using Rust
 - [ ] Enemy sprite(s)
 - [ ] Projectile sprite
 - [ ] Sound effects
-- [ ] Music
+- [ ] ~~Music~~
 
 ### Other
 
 - [x] Scoreboard
-- [ ] Planetary system static defenses
+- [ ] ~~Planetary system static defenses~~

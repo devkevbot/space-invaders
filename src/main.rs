@@ -95,9 +95,11 @@ fn main() {
                 move_player
                     .before(check_for_collisions)
                     .after(apply_velocity),
+                play_collision_sound.after(check_for_collisions),
             )
                 .in_schedule(CoreSchedule::FixedUpdate),
         )
+        // Configure how frequently our gameplay systems are run
         .insert_resource(FixedTime::new_from_secs(TIME_STEP))
         .add_system(update_scoreboard)
         .add_system(update_lives_tracker)
@@ -138,6 +140,12 @@ struct Scoreboard {
 struct LivesTracker {
     lives_left: usize,
 }
+
+#[derive(Resource)]
+struct CollisionSound(Handle<AudioSource>);
+
+#[derive(Resource)]
+struct PlayerShootSound(Handle<AudioSource>);
 
 enum WallLocation {
     Left,
@@ -212,6 +220,12 @@ impl WallBundle {
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2dBundle::default());
+
+    // Sound
+    let projectile_collision_sound = asset_server.load("sounds/lowFrequency_explosion_001.ogg");
+    commands.insert_resource(CollisionSound(projectile_collision_sound));
+    let player_shoot_sound = asset_server.load("sounds/laserSmall_001.ogg");
+    commands.insert_resource(PlayerShootSound(player_shoot_sound));
 
     let player_y = BOTTOM_WALL + GAP_BETWEEN_PLAYER_AND_FLOOR;
 
@@ -337,6 +351,8 @@ fn shoot_player_projectile(
     query: Query<&Transform, With<Player>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
     keyboard_input: Res<Input<KeyCode>>,
+    audio: Res<Audio>,
+    sound: Res<PlayerShootSound>,
 ) {
     if keyboard_input.just_pressed(KeyCode::Space) {
         if let Ok(player_position) = query.get_single() {
@@ -358,6 +374,7 @@ fn shoot_player_projectile(
                 Projectile,
                 Velocity(INITIAL_PLAYER_PROJECTILE_DIRECTION.normalize() * PROJECTILE_SPEED),
             ));
+            audio.play(sound.0.clone());
         }
     }
 }
@@ -527,5 +544,18 @@ fn check_for_collisions(
                 }
             }
         }
+    }
+}
+
+fn play_collision_sound(
+    mut collision_events: EventReader<CollisionEvent>,
+    audio: Res<Audio>,
+    sound: Res<CollisionSound>,
+) {
+    // Play a sound once per frame if a collision occurred.
+    if !collision_events.is_empty() {
+        // This prevents events staying active on the next frame.
+        collision_events.clear();
+        audio.play(sound.0.clone());
     }
 }
